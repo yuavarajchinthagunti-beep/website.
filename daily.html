@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Daily Track Record</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial, sans-serif; margin:0; background:#f4f6f8; }
+header { background:#0a2540; color:white; text-align:center; padding:20px; }
+header h1{margin:0;font-size:2rem;}
+header h3{margin:5px 0 0;font-weight:normal;}
+.container{display:flex;gap:20px;padding:20px;flex-wrap:wrap;}
+.left{width:220px;background:white;padding:15px;border-radius:8px;flex-shrink:0;}
+.right{flex:1;background:white;padding:20px;border-radius:8px;overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th,td{border:1px solid #999;padding:10px;text-align:center;position:relative;}
+th{background:#eaeaea;}
+button{margin:2px;padding:4px 8px;border:none;cursor:pointer;border-radius:4px;font-weight:bold;}
+.check{background-color:#4CAF50;color:white;padding:2px 6px;margin:1px;border-radius:3px;cursor:pointer;}
+.cross{background-color:#f44336;color:white;padding:2px 6px;margin:1px;border-radius:3px;cursor:pointer;}
+.locked{color:gray;font-weight:bold;}
+#chartContainer{display:none;margin-top:20px;text-align:center;}
+#quote{font-size:1rem;margin:10px 0;text-align:center;}
+#quote img{width:100px;height:100px;display:block;margin:10px auto;}
+#percentage{font-weight:bold;margin-top:10px;text-align:center;}
+</style>
+</head>
+<body>
+
+<header>
+<h1>DAILY TRACK RECORD</h1>
+<h3 id="monthYear"></h3>
+</header>
+
+<div class="container">
+<div class="left">
+<h3>Select Date:</h3>
+<input type="date" id="datePicker">
+<p><strong>Selected:</strong></p>
+<p id="selectedDate">Today</p>
+
+<button onclick="showDailyAnalysis()">Daily Analyze</button>
+<button onclick="showWeeklyAnalysis()">Weekly Analyze</button>
+<button onclick="showTable()">Show Table</button>
+<button onclick="addTask()">Add Task</button>
+</div>
+
+<div class="right">
+<div id="quote"></div>
+<table id="habitTable">
+<thead>
+<tr>
+<th>Activity</th>
+<th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
+</tr>
+</thead>
+<tbody id="tableBody"></tbody>
+</table>
+<div id="percentage"></div>
+<div id="chartContainer"><canvas id="chart"></canvas></div>
+</div>
+</div>
+
+<script>
+// -------- Setup --------
+let savedData = JSON.parse(localStorage.getItem("habitData")) || {};
+let tasks = Object.keys(savedData);
+if(tasks.length===0) tasks = ["Skill","Fitness","Content","Family","Sleep","Water"];
+
+const today = new Date();
+const todayISO = today.toISOString().split("T")[0];
+const todayDayIndex = today.getDay()===0?6:today.getDay()-1;
+
+// -------- Date Picker --------
+const datePicker = document.getElementById("datePicker");
+datePicker.max = todayISO;
+datePicker.value = todayISO;
+
+datePicker.addEventListener("change", ()=>{
+    const selected = new Date(datePicker.value);
+    document.getElementById("selectedDate").innerText = selected.toDateString();
+    buildTable();
+});
+
+// -------- Month & Year --------
+function setMonthYear(){
+    const d = new Date();
+    const months = ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"];
+    document.getElementById("monthYear").innerText = months[d.getMonth()] + " " + d.getFullYear();
+}
+setMonthYear();
+
+// -------- Build Table --------
+function buildTable(){
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+    const selectedDateValue = datePicker.value;
+    const selected = new Date(selectedDateValue);
+    const selectedDayIndex = selected.getDay()===0?6:selected.getDay()-1;
+
+    tasks.forEach((task)=>{
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.innerText = task;
+        tdName.style.cursor = "pointer";
+        tdName.onclick = ()=>deleteTask(task);
+        tr.appendChild(tdName);
+
+        for(let i=0;i<7;i++){
+            const td = document.createElement("td");
+            td.id = `${task}_${i}`;
+            const savedValue = savedData[task] && savedData[task][i] !== undefined ? savedData[task][i] : null;
+
+            // Today editable
+            if(i===selectedDayIndex && selectedDateValue===todayISO){
+                td.innerHTML = "";
+                const checkBtn = document.createElement("span");
+                checkBtn.className = "check";
+                checkBtn.innerText = "✔";
+                checkBtn.onclick = ()=>markTaskWithButtons(task,i,1,td);
+
+                const crossBtn = document.createElement("span");
+                crossBtn.className = "cross";
+                crossBtn.innerText = "✖";
+                crossBtn.onclick = ()=>markTaskWithButtons(task,i,0,td);
+
+                td.appendChild(checkBtn);
+                td.appendChild(document.createTextNode(" "));
+                td.appendChild(crossBtn);
+
+                // Show current selection if already marked
+                if(savedValue===1) checkBtn.style.opacity=1;
+                if(savedValue===0) crossBtn.style.opacity=1;
+
+            } else { // Past/future locked
+                if(savedValue===1) td.innerText="✔";
+                else if(savedValue===0) td.innerText="✖";
+                else td.innerHTML='<span class="locked">Locked</span>';
+            }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+// -------- Tick/Cross Update keeping buttons --------
+function markTaskWithButtons(task,index,val,td){
+    if(!savedData[task]) savedData[task]={};
+    savedData[task][index]=val;
+    localStorage.setItem("habitData", JSON.stringify(savedData));
+
+    // update buttons appearance
+    td.querySelectorAll(".check,.cross").forEach(el=>el.style.opacity=0.3);
+    if(val===1) td.querySelector(".check").style.opacity=1;
+    else td.querySelector(".cross").style.opacity=1;
+}
+
+// -------- Add/Delete Task --------
+function addTask(){
+    let taskName = prompt("Enter task name:");
+    if(taskName && !tasks.includes(taskName)){
+        tasks.push(taskName);
+        savedData[taskName]={};
+        localStorage.setItem("habitData", JSON.stringify(savedData));
+        buildTable();
+    }
+}
+function deleteTask(task){
+    if(confirm(`Delete task "${task}"?`)){
+        tasks = tasks.filter(t=>t!==task);
+        delete savedData[task];
+        localStorage.setItem("habitData", JSON.stringify(savedData));
+        buildTable();
+    }
+}
+
+// -------- Quotes & Animations --------
+const positiveQuotes=["Awesome! Keep going!","Great consistency!","You're doing great!"];
+const correctiveQuotes=["Don't worry, try again tomorrow!","Keep improving!","Small steps matter!"];
+const positiveGIF="https://media.giphy.com/media/111ebonMs90YLu/giphy.gif";
+const correctiveGIF="https://media.giphy.com/media/l3vR85PnGsBwu1PFK/giphy.gif";
+
+function showQuote(performance){
+    const quoteDiv = document.getElementById("quote");
+    if(performance>=0.7){
+        const msg = positiveQuotes[Math.floor(Math.random()*positiveQuotes.length)];
+        quoteDiv.innerHTML = `<p>${msg}</p><img src="${positiveGIF}">`;
+    } else {
+        const msg = correctiveQuotes[Math.floor(Math.random()*correctiveQuotes.length)];
+        quoteDiv.innerHTML = `<p>${msg}</p><img src="${correctiveGIF}">`;
+    }
+}
+
+// -------- Daily Analysis --------
+function showDailyAnalysis(){
+    const ctx=document.getElementById('chart').getContext('2d');
+    document.getElementById("habitTable").style.display="table";
+    document.getElementById("chartContainer").style.display="block";
+
+    const selectedDateValue = datePicker.value;
+    const selected = new Date(selectedDateValue);
+    const selectedDayIndex = selected.getDay()===0?6:selected.getDay()-1;
+
+    const values = tasks.map(t=> savedData[t] && savedData[t][selectedDayIndex]!==undefined ? savedData[t][selectedDayIndex] : 0);
+    const performance = values.reduce((a,b)=>a+b,0)/tasks.length;
+
+    document.getElementById("percentage").innerText=`YOUR DAY ANALYSIS IS: ${(performance*100).toFixed(0)}%`;
+    showQuote(performance);
+
+    const colors = ['#4CAF50','#f44336','#2196F3','#FF9800','#9C27B0','#00BCD4','#FFC107','#8BC34A'];
+    if(window.myChart) window.myChart.destroy();
+    window.myChart = new Chart(ctx,{
+        type:'bar',
+        data:{labels:tasks,datasets:[{label:'Today Performance',data:values,backgroundColor:colors.slice(0,tasks.length)}]},
+        options:{scales:{y:{beginAtZero:true,max:1}},responsive:true}
+    });
+}
+
+// -------- Weekly Analysis --------
+function showWeeklyAnalysis(){
+    const ctx=document.getElementById('chart').getContext('2d');
+    document.getElementById("habitTable").style.display="table";
+    document.getElementById("chartContainer").style.display="block";
+
+    const labels=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const dataSets = tasks.map((t,i)=>{
+        const weekData=[];
+        for(let d=0;d<7;d++){
+            weekData.push(savedData[t] && savedData[t][d]!==undefined ? savedData[t][d]:0);
+        }
+        return {
+            label:t,
+            data:weekData,
+            borderColor:['#4CAF50','#f44336','#2196F3','#FF9800','#9C27B0','#00BCD4','#FFC107','#8BC34A'][i],
+            fill:false,
+            tension:0.3,
+            borderWidth:1,
+            pointRadius:4
+        };
+    });
+
+    if(window.myChart) window.myChart.destroy();
+    window.myChart = new Chart(ctx,{
+        type:'line',
+        data:{labels:labels,datasets:dataSets},
+        options:{scales:{y:{beginAtZero:true,max:1}},responsive:true}
+    });
+}
+
+// -------- Show Table --------
+function showTable(){
+    document.getElementById("habitTable").style.display="table";
+    document.getElementById("chartContainer").style.display="none";
+}
+
+// -------- Initialize Table --------
+buildTable();
+</script>
+</body>
+</html>
